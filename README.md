@@ -1,1 +1,0 @@
-# rn-the-practical-guide

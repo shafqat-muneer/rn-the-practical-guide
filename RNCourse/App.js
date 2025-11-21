@@ -1,79 +1,123 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import AppLoading from 'expo-app-loading';
+import { StyleSheet, Button, View, Alert, Platform } from 'react-native';
+import * as Notifications from 'expo-notifications';
 
-import AllPlaces from './screens/AllPlaces';
-import AddPlace from './screens/AddPlace';
-import IconButton from './components/UI/IconButton';
-import { Colors } from './constants/colors';
-import Map from './screens/Map';
-import { init } from './util/database';
-import PlaceDetails from './screens/PlaceDetails';
-
-const Stack = createNativeStackNavigator();
+Notifications.setNotificationHandler({
+  handleNotification: async () => {
+    return {
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+      shouldShowAlert: true,
+    };
+  },
+});
 
 export default function App() {
-  const [dbInitialized, setDbInitialized] = useState(false);
-
   useEffect(() => {
-    init()
-      .then(() => {
-        setDbInitialized(true);
-      })
-      .catch((err) => {
-        console.log(err);
-      });
+    async function configurePushNotifications() {
+      const { status } = await Notifications.getPermissionsAsync();
+      let finalStatus = status;
+
+      if (finalStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+
+      if (finalStatus !== 'granted') {
+        Alert.alert(
+          'Permission required',
+          'Push notifications need the appropriate permissions.'
+        );
+        return;
+      }
+
+      const pushTokenData = await Notifications.getExpoPushTokenAsync();
+      console.log(pushTokenData);
+
+      if (Platform.OS === 'android') {
+        Notifications.setNotificationChannelAsync('default', {
+          name: 'default',
+          importance: Notifications.AndroidImportance.DEFAULT,
+        });
+      }
+    }
+
+    configurePushNotifications();
   }, []);
 
-  if (!dbInitialized) {
-    return <AppLoading />;
+  useEffect(() => {
+    const subscription1 = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        console.log('NOTIFICATION RECEIVED');
+        console.log(notification);
+        const userName = notification.request.content.data.userName;
+        console.log(userName);
+      }
+    );
+
+    const subscription2 = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        console.log('NOTIFICATION RESPONSE RECEIVED');
+        console.log(response);
+        const userName = response.notification.request.content.data.userName;
+        console.log(userName);
+      }
+    );
+
+    return () => {
+      subscription1.remove();
+      subscription2.remove();
+    };
+  }, []);
+
+  function scheduleNotificationHandler() {
+    Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'My first local notification',
+        body: 'This is the body of the notification.',
+        data: { userName: 'Max' },
+      },
+      trigger: {
+        seconds: 5,
+      },
+    });
+  }
+
+  function sendPushNotificationHandler() {
+    fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        to: '<Your Device Push Token>]',
+        title: 'Test - sent from a device!',
+        body: 'This is a test!'
+      })
+    });
   }
 
   return (
-    <>
-      <StatusBar style="dark" />
-      <NavigationContainer>
-        <Stack.Navigator
-          screenOptions={{
-            headerStyle: { backgroundColor: Colors.primary500 },
-            headerTintColor: Colors.gray700,
-            contentStyle: { backgroundColor: Colors.gray700 },
-          }}
-        >
-          <Stack.Screen
-            name="AllPlaces"
-            component={AllPlaces}
-            options={({ navigation }) => ({
-              title: 'Your Favorite Places',
-              headerRight: ({ tintColor }) => (
-                <IconButton
-                  icon="add"
-                  size={24}
-                  color={tintColor}
-                  onPress={() => navigation.navigate('AddPlace')}
-                />
-              ),
-            })}
-          />
-          <Stack.Screen
-            name="AddPlace"
-            component={AddPlace}
-            options={{
-              title: 'Add a new Place',
-            }}
-          />
-          <Stack.Screen name="Map" component={Map} />
-          <Stack.Screen
-            name="PlaceDetails"
-            component={PlaceDetails}
-            options={{
-              title: 'Loading Place...',
-            }}
-          />
-        </Stack.Navigator>
-      </NavigationContainer>
-    </>
+    <View style={styles.container}>
+      <Button
+        title="Schedule Notification"
+        onPress={scheduleNotificationHandler}
+      />
+      <Button
+        title="Send Push Notification"
+        onPress={sendPushNotificationHandler}
+      />
+      <StatusBar style="auto" />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
